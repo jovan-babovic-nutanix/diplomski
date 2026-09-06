@@ -1,1 +1,1 @@
-"""Maze Evolution: comparing a Genetic Algorithm against NEAT on maze solving."""
+"""Maze Evolution: comparing GA, Q-Learning and A* on maze solving."""

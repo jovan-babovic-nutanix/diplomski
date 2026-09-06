@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Launch the interactive maze-evolution visualizer.
+"""Launch the interactive maze comparison visualizer.
+
+Shows all three methods (GA, Q-Learning, A*) side by side,
+running in lock-step on the same maze.
 
 Usage:
-    python scripts/run_game.py [--width 21] [--height 21] [--seed 42]
-                               [--max-steps 300] [--fps 30]
+    python scripts/run_game.py [--width 15] [--height 15] [--seed 42]
+                               [--max-steps 200] [--fps 60]
 """
 from __future__ import annotations
 

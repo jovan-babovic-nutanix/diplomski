@@ -1,6 +1,6 @@
 """Tabular Q-Learning - the reinforcement-learning baseline.
 
-Unlike the GA/NEAT (which search over whole policies) Q-Learning learns a value
+Unlike GA (which searches over whole policies), Q-Learning learns a value
 ``Q[state, action]`` by trial and error, one transition at a time:
 
     Q[s,a] <- Q[s,a] + alpha * (reward + gamma * max_a' Q[s',a'] - Q[s,a])
@@ -12,7 +12,7 @@ field) speeds learning without changing the optimal policy.
 
 The greedy rollout (always taking ``argmax`` Q) is reused both to measure
 progress with the *shared* fitness function (so the convergence curve is
-comparable to GA/NEAT) and as the trajectory drawn by the visualizer.
+comparable to GA) and as the trajectory drawn by the visualizer.
 """
 from __future__ import annotations
 

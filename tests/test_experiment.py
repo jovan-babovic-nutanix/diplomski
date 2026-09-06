@@ -5,7 +5,6 @@ from config import (
     ExperimentConfig,
     GAConfig,
     MazeConfig,
-    NEATConfig,
     QLearningConfig,
     SimulationConfig,
 )
@@ -20,7 +19,6 @@ def _tiny_cfg() -> ExperimentConfig:
         maze=MazeConfig(width=11, height=11),
         simulation=SimulationConfig(max_steps=120),
         ga=GAConfig(population_size=40, generations=8),
-        neat=NEATConfig(population_size=40, generations=8),
         qlearning=QLearningConfig(episodes=400, episodes_per_step=50, max_steps=120),
     )
 

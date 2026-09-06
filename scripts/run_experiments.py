@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Run the headless multi-method comparison study and produce CSVs + plots.
 
-Compares A*, GA, NEAT and Q-Learning on the same mazes.
+Compares A*, GA and Q-Learning on the same mazes.
 
 Usage:
     python scripts/run_experiments.py [--seeds 5] [--generations 80]
         [--episodes 4000] [--width 21] [--height 21]
-        [--ga-pop 200] [--neat-pop 150] [--max-steps 300]
-        [--methods A*,GA,NEAT,Q-Learning] [--output outputs]
+        [--ga-pop 200] [--max-steps 300]
+        [--methods A*,GA,Q-Learning] [--output outputs]
 """
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ from config import (  # noqa: E402
     ExperimentConfig,
     GAConfig,
     MazeConfig,
-    NEATConfig,
     QLearningConfig,
     SimulationConfig,
     seed_everything,
@@ -34,14 +33,13 @@ from src.experiments.runner import DEFAULT_METHODS, run_experiment  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="A* vs GA vs NEAT vs Q-Learning maze study")
+    parser = argparse.ArgumentParser(description="A* vs GA vs Q-Learning maze study")
     parser.add_argument("--seeds", type=int, default=5)
     parser.add_argument("--generations", type=int, default=80)
     parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--width", type=int, default=21)
     parser.add_argument("--height", type=int, default=21)
     parser.add_argument("--ga-pop", type=int, default=200)
-    parser.add_argument("--neat-pop", type=int, default=150)
     parser.add_argument("--max-steps", type=int, default=300)
     parser.add_argument("--methods", type=str, default=",".join(DEFAULT_METHODS))
     parser.add_argument("--output", type=str, default="outputs")
@@ -56,7 +54,6 @@ def main() -> None:
         maze=MazeConfig(width=args.width, height=args.height),
         simulation=SimulationConfig(max_steps=args.max_steps),
         ga=GAConfig(population_size=args.ga_pop, generations=args.generations),
-        neat=NEATConfig(population_size=args.neat_pop, generations=args.generations),
         qlearning=QLearningConfig(episodes=args.episodes, max_steps=args.max_steps),
     )
 

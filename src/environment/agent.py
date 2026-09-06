@@ -5,7 +5,7 @@ from ..maze.maze import MOVES, Cell
 
 
 class Agent:
-    """Minimal grid agent. The brain (GA genome or NEAT network) is external;
+    """Minimal grid agent. The brain (GA genome) is external;
     this class only tracks position and applies validated moves."""
 
     def __init__(self, start: Cell):

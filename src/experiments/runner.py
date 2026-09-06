@@ -2,7 +2,7 @@
 
 ``make_eval`` / ``build_*`` / ``run_single`` are reused by the interactive
 visualizer too, so both entry points share identical setup. The comparison study
-drives every method through the common ``Solver`` interface.
+drives GA, Q-Learning and A* through the common ``Solver`` interface.
 """
 from __future__ import annotations
 
@@ -15,16 +15,13 @@ from config import (
     ExperimentConfig,
     FitnessConfig,
     GAConfig,
-    NEATConfig,
     QLearningConfig,
     SimulationConfig,
     resolve_genome_length,
 )
-from ..environment.sensors import precompute_static_sensors
 from ..environment.simulation import Controller, SimulationResult, simulate
 from ..evolution.base import Evolver, GenerationStats
 from ..evolution.ga.ga import GeneticAlgorithm
-from ..evolution.neat.neat import Neat
 from ..fitness import evaluate_fitness
 from ..maze.distance import bfs_distance_field, optimal_path_length
 from ..maze.generator import generate_maze
@@ -44,11 +41,9 @@ def make_eval(
     """Build the evaluation function shared by the evolutionary engines."""
     if dist_field is None:
         dist_field = bfs_distance_field(maze, maze.goal)
-    static_sensors = precompute_static_sensors(maze)
-
     def eval_fn(controller: Controller) -> Tuple[float, SimulationResult]:
         result = simulate(
-            maze, controller, sim_cfg.max_steps, dist_field, static_sensors
+            maze, controller, sim_cfg.max_steps, dist_field
         )
         return evaluate_fitness(result, fit_cfg), result
 
@@ -60,17 +55,13 @@ def build_ga(cfg: GAConfig, sim_cfg: SimulationConfig) -> GeneticAlgorithm:
     return GeneticAlgorithm(cfg, genome_length=resolve_genome_length(cfg, sim_cfg))
 
 
-def build_neat(cfg: NEATConfig) -> Neat:
-    return Neat(cfg)
-
-
 def run_single(
     evolver: Evolver,
     eval_fn,
     generations: int,
     on_generation: Optional[Callable[[Evolver, GenerationStats], None]] = None,
 ) -> Tuple[List[GenerationStats], Optional[int]]:
-    """Run a single evolver (kept for the GA/NEAT unit tests)."""
+    """Run a single evolutionary solver for unit tests."""
     history: List[GenerationStats] = []
     solved_gen: Optional[int] = None
     for _ in range(generations):
@@ -99,13 +90,6 @@ def build_solver(
         ga_cfg = GAConfig(**{**cfg.ga.__dict__, "seed": seed})
         ga = build_ga(ga_cfg, cfg.simulation)
         return EvolverSolver(ga, eval_fn, ga_cfg.population_size), ga_cfg.generations
-    if method == "NEAT":
-        neat_cfg = NEATConfig(**{**cfg.neat.__dict__, "seed": seed})
-        neat = build_neat(neat_cfg)
-        return (
-            EvolverSolver(neat, eval_fn, neat_cfg.population_size),
-            neat_cfg.generations,
-        )
     if method == "Q-Learning":
         ql_cfg = QLearningConfig(**{**cfg.qlearning.__dict__, "seed": seed})
         solver = QLearningSolver(ql_cfg, maze, dist_field, cfg.fitness)
@@ -154,7 +138,7 @@ def _trial(method: str, solver: Solver, max_iterations: int, seed: int, optimal:
     )
 
 
-DEFAULT_METHODS = ("A*", "GA", "NEAT", "Q-Learning")
+DEFAULT_METHODS = ("A*", "GA", "Q-Learning")
 
 
 def run_experiment(

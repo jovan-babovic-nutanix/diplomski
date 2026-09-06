@@ -1,7 +1,7 @@
-"""Common interfaces shared by the GA and NEAT engines.
+"""Common interfaces shared by evolutionary algorithms.
 
 A single ``Evolver`` abstraction lets the visualizer and the experiment runner
-treat both algorithms identically:
+treat evolutionary algorithms identically:
 
     evolver.evaluate(eval_fn)   # score the current generation
     stats = evolver.stats()     # summarize it
@@ -37,7 +37,7 @@ class GenerationStats:
     mean_fitness: float
     best_reached: bool
     best_steps: int
-    # NEAT-only extras (0 for the GA).
+    # Optional method-specific extras.
     num_species: int = 0
     best_nodes: int = 0
     best_connections: int = 0

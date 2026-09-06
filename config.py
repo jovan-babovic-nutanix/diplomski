@@ -40,7 +40,7 @@ class FitnessConfig:
     goal_bonus: float = 1000.0      # bonus for reaching the goal
     step_penalty: float = 1.0       # penalty per step (only applied when solved)
     bump_penalty: float = 1.0       # penalty per wall collision
-    min_fitness: float = 0.01       # floor to keep fitness positive (NEAT sharing)
+    min_fitness: float = 0.01       # floor keeps evolutionary fitness positive
 
 
 @dataclass
@@ -53,30 +53,6 @@ class GAConfig:
     crossover_rate: float = 0.85
     mutation_rate: float = 0.03     # per-gene probability of random reset
     elitism: int = 4
-    seed: int = 0
-
-
-@dataclass
-class NEATConfig:
-    """From-scratch NEAT hyperparameters."""
-    population_size: int = 150
-    generations: int = 80
-    # compatibility distance coefficients
-    c_disjoint: float = 1.0         # weight on disjoint + excess genes
-    c_weight: float = 0.5           # weight on average matching weight difference
-    compatibility_threshold: float = 3.0
-    # mutation
-    weight_mutate_rate: float = 0.8     # chance to mutate connection weights at all
-    weight_perturb_rate: float = 0.9    # of those, chance to perturb (vs reset)
-    weight_init_std: float = 1.0
-    weight_perturb_std: float = 0.4
-    add_node_rate: float = 0.03
-    add_conn_rate: float = 0.06
-    # reproduction
-    survival_threshold: float = 0.3     # top fraction of a species that may breed
-    elitism: int = 1                    # copy best genome of large species unchanged
-    stagnation: int = 15                # generations without improvement before cull
-    species_elitism: int = 2            # always protect this many top species
     seed: int = 0
 
 
@@ -107,7 +83,6 @@ class ExperimentConfig:
     simulation: SimulationConfig = field(default_factory=SimulationConfig)
     fitness: FitnessConfig = field(default_factory=FitnessConfig)
     ga: GAConfig = field(default_factory=GAConfig)
-    neat: NEATConfig = field(default_factory=NEATConfig)
     qlearning: QLearningConfig = field(default_factory=QLearningConfig)
 
 

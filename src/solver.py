@@ -1,15 +1,15 @@
-"""Common ``Solver`` abstraction unifying every maze-navigation method.
+"""Common ``Solver`` abstraction unifying the maze-navigation methods.
 
-The original project was built around the population-based ``Evolver`` (GA, NEAT).
+The original project was built around the population-based GA ``Evolver``.
 A* (a one-shot planner) and Q-Learning (episodic reinforcement learning) do not
 fit that mould, so this thin layer lets the experiment runner and the visualizer
-treat all four methods identically:
+treat all three methods identically:
 
     stats = solver.step()      # do one unit of work, return a progress snapshot
     path  = solver.best_path() # best start->goal trajectory found so far
 
 A "unit of work" (one ``step``) is method-specific:
-    * GA / NEAT  -> one generation
+    * GA         -> one generation
     * Q-Learning -> a batch of training episodes + a greedy evaluation
     * A*         -> the single planning run (then ``is_converged`` is True)
 
@@ -54,7 +54,7 @@ class Solver(ABC):
 
 
 class EvolverSolver(Solver):
-    """Adapts the existing GA / NEAT ``Evolver`` to the ``Solver`` interface."""
+    """Adapts the GA ``Evolver`` to the ``Solver`` interface."""
 
     def __init__(self, evolver: Evolver, eval_fn: EvalFn, population_size: int):
         self.evolver = evolver

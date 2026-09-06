@@ -22,7 +22,7 @@ import numpy as np  # noqa: E402
 
 from .metrics import TrialResult  # noqa: E402
 
-LEARNING_METHODS = ("GA", "NEAT", "Q-Learning")
+LEARNING_METHODS = ("GA", "Q-Learning")
 
 
 def _by_algorithm(trials: List[TrialResult]) -> Dict[str, List[TrialResult]]:
@@ -162,28 +162,6 @@ def plot_iterations_to_solve(trials: List[TrialResult], path: str) -> None:
     plt.close()
 
 
-def plot_neat_complexity(trials: List[TrialResult], path: str) -> None:
-    neat = [t for t in trials if t.algorithm == "NEAT"]
-    if not neat:
-        return
-    nodes = _stack(neat, lambda st: st.extra.get("nodes", 0.0))
-    conns = _stack(neat, lambda st: st.extra.get("connections", 0.0))
-    if nodes.size == 0:
-        return
-    gens = np.arange(nodes.shape[1])
-    plt.figure(figsize=(8, 5))
-    plt.plot(gens, nodes.mean(axis=0), label="nodes")
-    plt.plot(gens, conns.mean(axis=0), label="enabled connections")
-    plt.xlabel("Generation")
-    plt.ylabel("Count (mean over seeds)")
-    plt.title("NEAT champion network complexity")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(path, dpi=150)
-    plt.close()
-
-
 def generate_all_plots(trials: List[TrialResult], output_dir: str) -> List[str]:
     os.makedirs(output_dir, exist_ok=True)
     figures = {
@@ -193,7 +171,6 @@ def generate_all_plots(trials: List[TrialResult], output_dir: str) -> List[str]:
         "convergence_evaluations.png": plot_convergence_evaluations,
         "iterations_to_solve.png": plot_iterations_to_solve,
         "wall_time.png": plot_wall_time,
-        "neat_complexity.png": plot_neat_complexity,
     }
     written = []
     for name, fn in figures.items():

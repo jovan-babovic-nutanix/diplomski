@@ -3,7 +3,7 @@
 The "brain" of a GA individual is simply a pre-computed list of actions. The
 controller replays them step by step (cycling if the episode outlasts the
 genome), ignoring sensors entirely. This is the classic, easy-to-explain
-baseline against which NEAT's reactive policies are compared.
+    evolutionary baseline.
 """
 from __future__ import annotations
 

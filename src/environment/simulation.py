@@ -1,8 +1,4 @@
-"""Runs a single agent (controller) through a maze and records what happened.
-
-This module is shared by both evolutionary engines, which is what makes the
-GA-vs-NEAT comparison fair: identical environment, identical episode dynamics.
-"""
+"""Runs a single agent (controller) through a maze and records what happened."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,20 +6,16 @@ from typing import List, Optional, Protocol
 
 import numpy as np
 
-import numpy as np
-
 from ..maze.distance import bfs_distance_field
 from ..maze.maze import Cell, Maze, MOVES
-from .sensors import NUM_SENSORS, build_sensor, precompute_static_sensors
 
-_ZERO_SENSORS = np.zeros(NUM_SENSORS, dtype=np.float64)
+_ZERO_SENSORS = np.zeros(1, dtype=np.float64)
 
 
 class Controller(Protocol):
     """Anything that can pick an action each step.
 
-    ``step`` is the time index (used by the GA's fixed move sequence) and
-    ``sensors`` is the local observation (used by NEAT networks).
+    ``step`` is the time index used by the GA's fixed move sequence.
     """
 
     def act(self, step: int, sensors: np.ndarray) -> int:
@@ -50,15 +42,9 @@ def simulate(
     controller: Controller,
     max_steps: int,
     dist_field: Optional[np.ndarray] = None,
-    static_sensors: Optional[np.ndarray] = None,
 ) -> SimulationResult:
     if dist_field is None:
         dist_field = bfs_distance_field(maze, maze.goal)
-
-    # Sensors are static per maze; precompute unless the controller ignores them.
-    needs_sensors = getattr(controller, "uses_sensors", True)
-    if needs_sensors and static_sensors is None:
-        static_sensors = precompute_static_sensors(maze)
 
     r, c = maze.start
     start_distance = int(dist_field[r, c])
@@ -67,15 +53,8 @@ def simulate(
     bumps = 0
     reached = False
     steps = 0
-    last_action = -1
-
     for step in range(max_steps):
-        if needs_sensors:
-            sensors = build_sensor(static_sensors[r, c], last_action)
-        else:
-            sensors = _ZERO_SENSORS
-        action = controller.act(step, sensors)
-        last_action = action
+        action = controller.act(step, _ZERO_SENSORS)
         dr, dc = MOVES[action]
         nr, nc = r + dr, c + dc
         if maze.passable(nr, nc):

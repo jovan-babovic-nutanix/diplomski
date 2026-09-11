@@ -3,7 +3,7 @@ import numpy as np
 from src.maze.distance import bfs_distance_field, optimal_path_length
 from src.maze.fixed_mazes import FIXED_MAZES, get_fixed_maze
 from src.maze.generator import generate_maze
-from src.maze.maze import OPEN
+from src.maze.maze import MOVE_NAMES, MOVES, OPEN
 
 
 def test_generation_is_deterministic():
@@ -24,6 +24,11 @@ def test_start_and_goal_are_open_and_distinct():
     assert m.grid[m.start] == OPEN
     assert m.grid[m.goal] == OPEN
     assert m.start != m.goal
+
+
+def test_actions_use_clockwise_order():
+    assert MOVE_NAMES == ("U", "R", "D", "L")
+    assert MOVES == ((-1, 0), (0, 1), (1, 0), (0, -1))
 
 
 def test_generated_maze_is_solvable():

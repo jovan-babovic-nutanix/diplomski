@@ -14,12 +14,16 @@ their next round together.
 Controls:
     SPACE  pause / resume
     + / -  faster / slower animation
+    N      next generation/training batch
+    click  NEXT ROUND button for the same action
     r      new maze (new seed), restart all methods
     v      toggle animation (off = fast-forward rounds)
     ESC    quit
 """
 from __future__ import annotations
 
+import math
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -41,6 +45,7 @@ from ..rl.qlearning import QLearningSolver
 
 METHODS = ["GA", "Q-Learning", "A*"]
 POPULATION_METHODS = {"GA"}
+MAX_VISIBLE_STEP = 8.0
 
 FCell = Tuple[float, float]
 
@@ -87,6 +92,9 @@ class MazeApp:
         self.show_render = True
         self.ga_done = False
         self.qlearning_done = False
+        self.astar_done = False
+        self.finished = False
+        self._reset_metrics()
         self.clock = pygame.time.Clock()
 
         self.states: Dict[str, PanelState] = {}
@@ -112,6 +120,8 @@ class MazeApp:
                 continue
             if method == "Q-Learning" and self.qlearning_done:
                 continue
+            if method == "A*" and self.astar_done:
+                continue
             self.states[method] = self._start_round(method)
             if method == "GA":
                 info = self.states[method].info
@@ -119,10 +129,57 @@ class MazeApp:
                 self.ga_done = bool(info.get("solved")) or (
                     generation + 1 >= self.ga_cfg.generations
                 )
+                self._record_completion("GA", self.states[method], self.ga_done)
             elif method == "Q-Learning":
-                self.qlearning_done = bool(self.states[method].info.get("solved"))
+                iteration = int(self.states[method].info.get("iteration", 0))
+                self.qlearning_done = bool(
+                    self.states[method].info.get("solved")
+                ) or iteration >= self._max_qlearning_rounds()
+                self._record_completion(
+                    "Q-Learning", self.states[method], self.qlearning_done
+                )
+            elif method == "A*":
+                self.astar_done = bool(self.states[method].info.get("solved"))
+                self._record_completion("A*", self.states[method], self.astar_done)
+        self.finished = self.ga_done and self.qlearning_done and self.astar_done
         self.global_max = max((s.max_len for s in self.states.values()), default=1)
         self.anim_pos = 0.0
+
+    def _reset_metrics(self) -> None:
+        now = time.perf_counter()
+        self.method_started = {method: now for method in METHODS}
+        self.metrics: Dict[str, Dict[str, object]] = {
+            method: {"completed": False} for method in METHODS
+        }
+
+    def _record_completion(
+        self, method: str, state: PanelState, completed: bool
+    ) -> None:
+        if not completed or self.metrics[method].get("completed"):
+            return
+        info = state.info
+        solved = bool(info.get("solved"))
+        path_length = info.get("best_steps")
+        optimality = "-"
+        if solved and path_length is not None and self.optimal > 0:
+            optimality = f"{float(path_length) / self.optimal:.2f}x"
+        elapsed = time.perf_counter() - self.method_started[method]
+        self.metrics[method] = {
+            "completed": True,
+            "solved": solved,
+            "iterations": info.get("iteration", "-"),
+            "evaluations": info.get("evaluations", "-"),
+            "path_length": path_length if path_length is not None else "-",
+            "optimality": optimality,
+            "time_s": f"{elapsed:.3f}s",
+        }
+
+    def _max_qlearning_rounds(self) -> int:
+        """Maximum UI training rounds allowed by the episode budget."""
+        return max(
+            1,
+            math.ceil(self.ql_cfg.episodes / self.ql_cfg.episodes_per_step),
+        )
 
     def _advance_all_rounds(self) -> None:
         for method in POPULATION_METHODS:
@@ -151,6 +208,7 @@ class MazeApp:
                 "iteration": stats.generation,
                 "solved": stats.best_reached,
                 "best_steps": stats.best_steps if stats.best_reached else None,
+                "evaluations": (stats.generation + 1) * self.ga_cfg.population_size,
                 "species": stats.num_species,
             },
         )
@@ -169,6 +227,7 @@ class MazeApp:
                 "iteration": st.iteration,
                 "solved": st.reached,
                 "best_steps": st.best_path_length,
+                "evaluations": st.evaluations,
                 "extra": dict(st.extra),
             },
         )
@@ -198,6 +257,9 @@ class MazeApp:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.renderer.next_button_rect().collidepoint(event.pos):
+                        self._advance_one_round()
                 elif event.type == pygame.KEYDOWN:
                     running = self._handle_key(event.key)
             self._update()
@@ -214,6 +276,8 @@ class MazeApp:
             self.speed = min(2000.0, self.speed * 1.5)
         elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
             self.speed = max(0.05, self.speed / 1.5)
+        elif key == pygame.K_n:
+            self._advance_one_round()
         elif key == pygame.K_v:
             self.show_render = not self.show_render
         elif key == pygame.K_r:
@@ -222,17 +286,29 @@ class MazeApp:
             self.renderer.set_maze(self.maze)
             self.ga_done = False
             self.qlearning_done = False
+            self.astar_done = False
+            self.finished = False
+            self._reset_metrics()
             self._start_all_rounds()
         return True
 
+    def _advance_one_round(self) -> None:
+        """Skip the current playback and advance all active methods once."""
+        if self.finished:
+            return
+        self._advance_all_rounds()
+
     def _update(self) -> None:
-        if self.paused:
+        if self.paused or self.finished:
             return
         if not self.show_render:
             self._advance_all_rounds()
             self.anim_pos = float(self.global_max)
             return
-        self.anim_pos += self.speed
+        # At very high speeds, jumping several hundred cells per frame makes
+        # the dots appear to disappear. Keep the displayed movement visible;
+        # the v key remains available for true fast-forward without drawing.
+        self.anim_pos += min(self.speed, MAX_VISIBLE_STEP)
         if self.anim_pos >= self.global_max:
             self._advance_all_rounds()
 
@@ -246,8 +322,19 @@ class MazeApp:
                 f"maze {self.maze.width}x{self.maze.height}",
                 f"seed {self.seed}",
                 f"optimal {self.optimal}",
-                f"speed {self.speed:.2f}x",
-                "PAUSED" if self.paused else "running",
+                (
+                    f"speed {self.speed:.0f}x"
+                    + (" (visual cap)" if self.show_render and self.speed > MAX_VISIBLE_STEP else "")
+                ),
+                (
+                    "FINISHED"
+                    if self.finished
+                    else (
+                        "PAUSED"
+                        if self.paused
+                        else ("fast-forward" if not self.show_render else "running")
+                    )
+                ),
             ],
             progress,
         )
@@ -264,8 +351,9 @@ class MazeApp:
                 self._panel_stats(method, state),
                 bool(state.info.get("solved")),
             )
+        self.renderer.draw_summary(self.metrics, self.finished)
         self.renderer.draw_footer(
-            "SPACE pause   +/- speed   r new maze   v toggle animation   ESC quit"
+            "SPACE pause   N / NEXT ROUND   +/- speed   r new maze   v fast-forward   ESC quit"
         )
         self.renderer.end_frame()
 

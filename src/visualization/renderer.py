@@ -1,4 +1,4 @@
-"""Pygame rendering for the side-by-side (2x2) method comparison.
+"""Pygame rendering for the side-by-side method comparison.
 
 Visual style copied from the "Flying Dots" GA maze project
 (https://github.com/pantela002/GENETIC-ALGORITHM-MAZE):
@@ -17,7 +17,7 @@ The renderer holds no algorithm logic: the app feeds it positions/stats, it draw
 """
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import pygame
 
@@ -55,8 +55,11 @@ METHOD_ACCENT = {
 PAD = 14
 HEADER_H = 74
 FOOTER_H = 30
-TITLE_H = 36
+TITLE_H = 56
 INNER = 8
+NEXT_BUTTON_W = 150
+NEXT_BUTTON_H = 24
+SUMMARY_W = 270
 
 
 class Renderer:
@@ -87,7 +90,8 @@ class Renderer:
         self.panel_w = self.grid_w + 2 * INNER
         self.panel_h = TITLE_H + self.grid_h + 2 * INNER
 
-        self.width = PAD + self.cols * (self.panel_w + PAD)
+        self.panels_width = self.cols * (self.panel_w + PAD)
+        self.width = PAD + self.panels_width + SUMMARY_W + PAD
         self.height = HEADER_H + PAD + self.rows * (self.panel_h + PAD) + FOOTER_H
 
     def set_maze(self, maze: Maze) -> None:
@@ -99,6 +103,14 @@ class Renderer:
         x = PAD + col * (self.panel_w + PAD)
         y = HEADER_H + PAD + row * (self.panel_h + PAD)
         return pygame.Rect(x, y, self.panel_w, self.panel_h)
+
+    def summary_rect(self) -> pygame.Rect:
+        return pygame.Rect(
+            PAD + self.panels_width,
+            HEADER_H + PAD,
+            SUMMARY_W,
+            self.panel_h,
+        )
 
     def _maze_origin(self, panel: pygame.Rect) -> Tuple[int, int]:
         return panel.x + INNER, panel.y + TITLE_H + INNER
@@ -141,6 +153,83 @@ class Renderer:
         surf = self.small.render(text, True, TITLE_DIM)
         self.screen.blit(surf, (PAD + 2, self.height - FOOTER_H + 6))
 
+        button = self.next_button_rect()
+        pygame.draw.rect(self.screen, (52, 152, 219), button, border_radius=6)
+        label = self.small.render("NEXT ROUND", True, (255, 255, 255))
+        self.screen.blit(label, label.get_rect(center=button.center))
+
+    def draw_summary(
+        self, metrics: Dict[str, Dict[str, object]], finished: bool
+    ) -> None:
+        """Draw final per-method metrics in the right-hand sidebar."""
+        rect = self.summary_rect()
+        pygame.draw.rect(self.screen, PANEL_BG, rect, border_radius=8)
+        pygame.draw.rect(
+            self.screen,
+            (46, 204, 113) if finished else (180, 188, 200),
+            rect,
+            width=2,
+            border_radius=8,
+        )
+
+        title = self.title_font.render("FINAL RESULTS", True, TITLE_TEXT)
+        self.screen.blit(title, (rect.x + 14, rect.y + 12))
+        subtitle = self.small.render(
+            "all methods complete" if finished else "waiting for completion",
+            True,
+            (0, 150, 80) if finished else TITLE_DIM,
+        )
+        self.screen.blit(subtitle, (rect.x + 14, rect.y + 36))
+
+        y = rect.y + 66
+        for method in ("GA", "Q-Learning", "A*"):
+            data = metrics.get(method, {})
+            accent = METHOD_ACCENT[method]
+            block_h = 100
+            pygame.draw.rect(
+                self.screen,
+                accent,
+                pygame.Rect(rect.x + 14, y, 5, block_h - 8),
+                border_radius=2,
+            )
+            name = self.font.render(method, True, TITLE_TEXT)
+            self.screen.blit(name, (rect.x + 28, y + 2))
+
+            solved = data.get("solved")
+            status = "SOLVED" if solved else (
+                "FAILED" if data.get("completed") else "running..."
+            )
+            status_color = (0, 155, 80) if solved else TITLE_DIM
+            self.screen.blit(
+                self.small.render(status, True, status_color),
+                (rect.x + 28, y + 23),
+            )
+
+            lines = [
+                f"iterations: {data.get('iterations', '-')}",
+                f"evaluations: {data.get('evaluations', '-')}",
+                f"path: {data.get('path_length', '-')}",
+                f"optimality: {data.get('optimality', '-')}",
+                f"time: {data.get('time_s', '-')}",
+            ]
+            line_y = y + 40
+            for line in lines:
+                self.screen.blit(
+                    self.small.render(line, True, TITLE_DIM),
+                    (rect.x + 28, line_y),
+                )
+                line_y += 11
+            y += block_h
+
+    def next_button_rect(self) -> pygame.Rect:
+        """Clickable rectangle for advancing one generation/training batch."""
+        return pygame.Rect(
+            self.width - PAD - NEXT_BUTTON_W,
+            self.height - FOOTER_H + 3,
+            NEXT_BUTTON_W,
+            NEXT_BUTTON_H,
+        )
+
     # -- panel --------------------------------------------------------------
     def draw_panel(
         self,
@@ -175,18 +264,18 @@ class Renderer:
         pygame.draw.rect(self.screen, accent, pygame.Rect(panel.x, panel.y, 6, TITLE_H), border_top_left_radius=8)
 
         name = self.title_font.render(method, True, TITLE_TEXT)
-        self.screen.blit(name, (panel.x + 16, panel.y + 8))
+        self.screen.blit(name, (panel.x + 16, panel.y + 6))
 
         if solved:
             cx = panel.x + 16 + name.get_width() + 14
-            cy = panel.y + TITLE_H // 2
+            cy = panel.y + 16
             pygame.draw.circle(self.screen, GOOD, (cx, cy), 9)
             pygame.draw.lines(self.screen, (255, 255, 255), False,
                               [(cx - 4, cy), (cx - 1, cy + 3), (cx + 4, cy - 4)], 2)
 
         text = "  ".join(f"{k} {v}" for k, v in stats)
         surf = self.small.render(text, True, TITLE_DIM)
-        self.screen.blit(surf, (panel.right - surf.get_width() - 14, panel.y + 11))
+        self.screen.blit(surf, (panel.x + 16, panel.y + 34))
 
     # -- maze ---------------------------------------------------------------
     def _draw_maze(self, ox: int, oy: int) -> None:

@@ -14,9 +14,10 @@ OPEN = 0
 
 Cell = Tuple[int, int]
 
-# Cardinal moves in (row, col) deltas: Up, Down, Left, Right.
-MOVES: Tuple[Cell, ...] = ((-1, 0), (1, 0), (0, -1), (0, 1))
-MOVE_NAMES = ("U", "D", "L", "R")
+# Cardinal moves in clockwise order in (row, col) deltas:
+# Up, Right, Down, Left.
+MOVES: Tuple[Cell, ...] = ((-1, 0), (0, 1), (1, 0), (0, -1))
+MOVE_NAMES = ("U", "R", "D", "L")
 
 
 class Maze:

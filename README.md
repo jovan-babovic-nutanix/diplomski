@@ -18,6 +18,12 @@ All methods share the same maze, episode dynamics and evaluation, so the
 comparison is fair. They are unified behind a common `Solver` interface
 (`src/solver.py`).
 
+Actions use clockwise numeric encoding:
+
+```text
+0 = Up, 1 = Right, 2 = Down, 3 = Left
+```
+
 ## Comparison criteria (per the thesis)
 
 1. **Success rate** - did the method reach the goal?

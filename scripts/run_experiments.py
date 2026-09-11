@@ -35,11 +35,11 @@ from src.experiments.runner import DEFAULT_METHODS, run_experiment  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description="A* vs GA vs Q-Learning maze study")
     parser.add_argument("--seeds", type=int, default=5)
-    parser.add_argument("--generations", type=int, default=80)
+    parser.add_argument("--generations", type=int, default=200)
     parser.add_argument("--episodes", type=int, default=4000)
     parser.add_argument("--width", type=int, default=21)
     parser.add_argument("--height", type=int, default=21)
-    parser.add_argument("--ga-pop", type=int, default=200)
+    parser.add_argument("--ga-pop", type=int, default=300)
     parser.add_argument("--max-steps", type=int, default=300)
     parser.add_argument("--methods", type=str, default=",".join(DEFAULT_METHODS))
     parser.add_argument("--output", type=str, default="outputs")

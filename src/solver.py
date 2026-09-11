@@ -100,3 +100,7 @@ class EvolverSolver(Solver):
     def best_path(self) -> Optional[List[Cell]]:
         best = self.evolver.best()
         return best.result.trajectory if (best and best.result) else None
+
+    def is_converged(self) -> bool:
+        """Stop early once any evaluated GA individual reaches the goal."""
+        return self._solved

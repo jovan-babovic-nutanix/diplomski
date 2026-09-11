@@ -134,6 +134,7 @@ class QLearningSolver(Solver):
         self._best_path_len: Optional[int] = None
         self._best_fit = 0.0
         self._best_result: Optional[SimulationResult] = None
+        self._last_stats: Optional[StepStats] = None
 
     def _epsilon(self) -> float:
         frac = min(1.0, self._episode / max(1, self.cfg.epsilon_decay_episodes))
@@ -142,6 +143,12 @@ class QLearningSolver(Solver):
         )
 
     def step(self) -> StepStats:
+        # Once the greedy policy has reached the goal, keep the successful
+        # policy stable instead of continuing to train and changing the path
+        # shown by the visualizer.
+        if self._solved and self._last_stats is not None:
+            return self._last_stats
+
         for _ in range(self.cfg.episodes_per_step):
             train_episode(
                 self.q, self.maze, self.dist_field, self.cfg, self.rng, self._epsilon()
@@ -159,7 +166,7 @@ class QLearningSolver(Solver):
                 self._best_path_len = result.steps
 
         coverage = float(np.count_nonzero(np.any(self.q != 0.0, axis=2)))
-        return StepStats(
+        self._last_stats = StepStats(
             iteration=self._episode // self.cfg.episodes_per_step,
             reached=self._solved,
             best_path_length=self._best_path_len,
@@ -167,6 +174,7 @@ class QLearningSolver(Solver):
             evaluations=self._episode,
             extra={"epsilon": self._epsilon(), "q_coverage": coverage},
         )
+        return self._last_stats
 
     def best_path(self) -> Optional[List[Cell]]:
         if self._best_result is not None:
@@ -174,3 +182,7 @@ class QLearningSolver(Solver):
         return greedy_rollout(
             self.q, self.maze, self.dist_field, self.cfg.max_steps
         ).trajectory
+
+    def is_converged(self) -> bool:
+        """Stop training once the greedy policy has solved the maze."""
+        return self._solved

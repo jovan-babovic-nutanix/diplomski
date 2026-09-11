@@ -85,6 +85,8 @@ class MazeApp:
         self.paused = False
         self.speed = 0.4
         self.show_render = True
+        self.ga_done = False
+        self.qlearning_done = False
         self.clock = pygame.time.Clock()
 
         self.states: Dict[str, PanelState] = {}
@@ -106,12 +108,26 @@ class MazeApp:
     # -- rounds -------------------------------------------------------------
     def _start_all_rounds(self) -> None:
         for method in METHODS:
+            if method == "GA" and self.ga_done:
+                continue
+            if method == "Q-Learning" and self.qlearning_done:
+                continue
             self.states[method] = self._start_round(method)
+            if method == "GA":
+                info = self.states[method].info
+                generation = int(info.get("iteration", 0))
+                self.ga_done = bool(info.get("solved")) or (
+                    generation + 1 >= self.ga_cfg.generations
+                )
+            elif method == "Q-Learning":
+                self.qlearning_done = bool(self.states[method].info.get("solved"))
         self.global_max = max((s.max_len for s in self.states.values()), default=1)
         self.anim_pos = 0.0
 
     def _advance_all_rounds(self) -> None:
         for method in POPULATION_METHODS:
+            if method == "GA" and self.ga_done:
+                continue
             self.evolvers[method].reproduce()
         self._start_all_rounds()
 
@@ -204,6 +220,8 @@ class MazeApp:
             self.seed += 1
             self._build_world(self.seed)
             self.renderer.set_maze(self.maze)
+            self.ga_done = False
+            self.qlearning_done = False
             self._start_all_rounds()
         return True
 
@@ -223,7 +241,7 @@ class MazeApp:
         self.renderer.begin_frame()
         progress = self.anim_pos / self.global_max if self.global_max else 1.0
         self.renderer.draw_header(
-            "Maze solving: 4 methods, one maze",
+            "Maze solving: 3 methods, one maze",
             [
                 f"maze {self.maze.width}x{self.maze.height}",
                 f"seed {self.seed}",
@@ -258,6 +276,8 @@ class MazeApp:
             ("gen" if method in POPULATION_METHODS else "iter", str(info.get("iteration", 0))),
             ("steps", str(steps) if steps is not None else "-"),
         ]
+        if method == "GA" and self.ga_done:
+            stats.append(("status", "done"))
         if method == "Q-Learning":
             extra = info.get("extra", {}) or {}
             stats.append(("eps", f"{extra.get('epsilon', 0):.2f}"))

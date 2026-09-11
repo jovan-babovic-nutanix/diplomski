@@ -65,3 +65,22 @@ def test_epsilon_decays():
     end_eps = solver._epsilon()
     assert start_eps > end_eps
     assert end_eps >= cfg.epsilon_end - 1e-9
+
+
+def test_qlearning_stops_after_solving():
+    maze = get_fixed_maze("simple")
+    solver, cfg = _solver(maze, episodes=4000)
+    for _ in range(cfg.episodes // cfg.episodes_per_step):
+        stats = solver.step()
+        if stats.reached:
+            break
+
+    assert stats.reached
+    evaluations = stats.evaluations
+    path = solver.best_path()
+
+    repeated = solver.step()
+
+    assert solver.is_converged()
+    assert repeated.evaluations == evaluations
+    assert solver.best_path() == path

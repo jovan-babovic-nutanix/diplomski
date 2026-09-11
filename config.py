@@ -46,8 +46,8 @@ class FitnessConfig:
 @dataclass
 class GAConfig:
     """Classic genetic algorithm hyperparameters."""
-    population_size: int = 200
-    generations: int = 80
+    population_size: int = 300
+    generations: int = 200
     genome_length: int = 0          # 0 -> auto = SimulationConfig.max_steps
     tournament_size: int = 5
     crossover_rate: float = 0.85

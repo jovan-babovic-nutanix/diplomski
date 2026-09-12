@@ -10,6 +10,9 @@ from ..solver import StepStats
 
 # Fixed superset of method-specific ``extra`` keys so the history CSV has stable
 # columns regardless of which method produced the row.
+#
+# ``q_coverage`` (Q-Learning) is a 0-1 fraction of the maze's open cells that
+# have any learned Q-value, not a raw cell count.
 EXTRA_KEYS = [
     "species",
     "nodes",

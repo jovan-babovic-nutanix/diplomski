@@ -132,14 +132,19 @@ class MazeApp:
                 self._record_completion("GA", self.states[method], self.ga_done)
             elif method == "Q-Learning":
                 iteration = int(self.states[method].info.get("iteration", 0))
+                # iteration is 0-based (matches GA), so round k is the
+                # (k+1)-th batch.
                 self.qlearning_done = bool(
                     self.states[method].info.get("solved")
-                ) or iteration >= self._max_qlearning_rounds()
+                ) or iteration + 1 >= self._max_qlearning_rounds()
                 self._record_completion(
                     "Q-Learning", self.states[method], self.qlearning_done
                 )
             elif method == "A*":
-                self.astar_done = bool(self.states[method].info.get("solved"))
+                # A* is one-shot: it is done after its single planning run
+                # whether or not a path exists. Deriving this from "solved"
+                # would hang the app forever on an unreachable goal.
+                self.astar_done = self.solvers["A*"].is_converged()
                 self._record_completion("A*", self.states[method], self.astar_done)
         self.finished = self.ga_done and self.qlearning_done and self.astar_done
         self.global_max = max((s.max_len for s in self.states.values()), default=1)
@@ -353,7 +358,8 @@ class MazeApp:
             )
         self.renderer.draw_summary(self.metrics, self.finished)
         self.renderer.draw_footer(
-            "SPACE pause   N / NEXT ROUND   +/- speed   r new maze   v fast-forward   ESC quit"
+            "SPACE pause   N / NEXT ROUND   +/- speed   r new maze   v fast-forward   ESC quit",
+            next_enabled=not self.finished,
         )
         self.renderer.end_frame()
 

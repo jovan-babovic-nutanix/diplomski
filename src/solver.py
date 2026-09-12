@@ -16,6 +16,13 @@ A "unit of work" (one ``step``) is method-specific:
 ``StepStats.evaluations`` is the cumulative number of environment episodes the
 method has consumed. It is the *fair common cost axis* for convergence plots,
 since the methods otherwise count progress in different native units.
+
+Accounting convention: every full environment episode counts once.
+    * GA         -> ``population_size`` per generation.
+    * Q-Learning -> the ``episodes_per_step`` training episodes *plus* the one
+      greedy-rollout episode run each ``step()`` to measure progress.
+    * A*         -> 1 (the single planning run - not an episode, but the one
+      unit of work A* ever does).
 """
 from __future__ import annotations
 

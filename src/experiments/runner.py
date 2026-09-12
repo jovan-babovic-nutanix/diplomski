@@ -108,11 +108,13 @@ def run_solver(
     evals_to_solve: Optional[int] = None
 
     start = time.perf_counter()
-    for it in range(max_iterations):
+    for _it in range(max_iterations):
         st = solver.step()
         history.append(st)
         if st.reached and iters_to_solve is None:
-            iters_to_solve = it
+            # Use the solver's own native index so this matches the
+            # `iteration` column on the corresponding history.csv row.
+            iters_to_solve = st.iteration
             evals_to_solve = st.evaluations
         if solver.is_converged():
             break

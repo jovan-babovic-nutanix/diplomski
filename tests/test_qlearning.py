@@ -84,3 +84,45 @@ def test_qlearning_stops_after_solving():
     assert solver.is_converged()
     assert repeated.evaluations == evaluations
     assert solver.best_path() == path
+
+
+def test_qlearning_iteration_is_zero_based():
+    # Use a maze/budget unlikely to solve within a handful of rounds so we can
+    # observe several consecutive, non-frozen iteration numbers.
+    maze = get_fixed_maze("spiral")
+    dist = bfs_distance_field(maze, maze.goal)
+    cfg = QLearningConfig(episodes=1000, episodes_per_step=5, max_steps=50, seed=0)
+    solver = QLearningSolver(cfg, maze, dist, FitnessConfig())
+
+    seen = []
+    for _ in range(4):
+        stats = solver.step()
+        seen.append(stats.iteration)
+        if stats.reached:
+            break
+
+    assert seen[0] == 0  # 0-based on the first call, matching GA's convention
+    assert seen == list(range(len(seen)))
+
+
+def test_qlearning_evaluations_include_rollouts():
+    maze = get_fixed_maze("spiral")
+    dist = bfs_distance_field(maze, maze.goal)
+    cfg = QLearningConfig(episodes=1000, episodes_per_step=100, max_steps=50, seed=0)
+    solver = QLearningSolver(cfg, maze, dist, FitnessConfig())
+
+    first = solver.step()
+    assert first.evaluations == 101  # 100 training episodes + 1 greedy rollout
+    if not first.reached:
+        second = solver.step()
+        assert second.evaluations == 202
+
+
+def test_q_coverage_is_fraction():
+    maze = get_fixed_maze("empty")
+    solver, cfg = _solver(maze, episodes=3000)
+    last = None
+    for _ in range(cfg.episodes // cfg.episodes_per_step):
+        last = solver.step()
+        assert 0.0 <= last.extra["q_coverage"] <= 1.0
+    assert last.extra["q_coverage"] > 0.5

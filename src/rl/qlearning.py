@@ -13,10 +13,18 @@ field) speeds learning without changing the optimal policy.
 The greedy rollout (always taking ``argmax`` Q) is reused both to measure
 progress with the *shared* fitness function (so the convergence curve is
 comparable to GA) and as the trajectory drawn by the visualizer.
+
+Conventions shared with the other ``Solver`` implementations (see
+``src/solver.py``):
+    * ``StepStats.iteration`` is 0-based on the *first* call to ``step()``,
+      matching GA's ``generation`` numbering (see ``EvolverSolver``).
+    * ``StepStats.evaluations`` counts every full environment episode this
+      solver has consumed: the ``episodes_per_step`` training episodes *and*
+      the one greedy-rollout episode run each ``step()`` to measure progress.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -130,9 +138,12 @@ class QLearningSolver(Solver):
         self.q = np.zeros((maze.height, maze.width, 4), dtype=np.float64)
         self.rng = np.random.default_rng(cfg.seed)
         self._episode = 0
+        self._round = 0
+        self._rollouts = 0
         self._solved = False
         self._best_path_len: Optional[int] = None
         self._best_fit = 0.0
+        self._best_key: Optional[Tuple[bool, float]] = None
         self._best_result: Optional[SimulationResult] = None
         self._last_stats: Optional[StepStats] = None
 
@@ -149,6 +160,9 @@ class QLearningSolver(Solver):
         if self._solved and self._last_stats is not None:
             return self._last_stats
 
+        round_index = self._round
+        self._round += 1
+
         for _ in range(self.cfg.episodes_per_step):
             train_episode(
                 self.q, self.maze, self.dist_field, self.cfg, self.rng, self._epsilon()
@@ -156,22 +170,32 @@ class QLearningSolver(Solver):
             self._episode += 1
 
         result = greedy_rollout(self.q, self.maze, self.dist_field, self.cfg.max_steps)
+        self._rollouts += 1
         fitness = evaluate_fitness(result, self.fit_cfg)
-        if fitness > self._best_fit or self._best_result is None:
-            self._best_fit = max(self._best_fit, fitness)
+        # Monotonic progress metric for the convergence plots.
+        self._best_fit = max(self._best_fit, fitness)
+        # Trajectory selection: ANY goal-reaching rollout beats ANY non-reaching
+        # one, fitness only breaks ties within a class. (Today goal_bonus
+        # dominates any plausible distance_weight*progress delta anyway, but
+        # this stays correct if the fitness weights are ever retuned.)
+        key = (result.reached, fitness)
+        if self._best_key is None or key > self._best_key:
+            self._best_key = key
             self._best_result = result
         if result.reached:
             self._solved = True
             if self._best_path_len is None or result.steps < self._best_path_len:
                 self._best_path_len = result.steps
 
-        coverage = float(np.count_nonzero(np.any(self.q != 0.0, axis=2)))
+        visited = int(np.count_nonzero(np.any(self.q != 0.0, axis=2)))
+        # Fraction of the maze's open cells that have any learned Q-value (0..1).
+        coverage = visited / max(1, self.maze.open_cells())
         self._last_stats = StepStats(
-            iteration=self._episode // self.cfg.episodes_per_step,
+            iteration=round_index,
             reached=self._solved,
             best_path_length=self._best_path_len,
             best_fitness=self._best_fit,
-            evaluations=self._episode,
+            evaluations=self._episode + self._rollouts,
             extra={"epsilon": self._epsilon(), "q_coverage": coverage},
         )
         return self._last_stats
@@ -179,6 +203,8 @@ class QLearningSolver(Solver):
     def best_path(self) -> Optional[List[Cell]]:
         if self._best_result is not None:
             return self._best_result.trajectory
+        # Drawing-only fallback before the first step(); deliberately not
+        # counted in `evaluations`.
         return greedy_rollout(
             self.q, self.maze, self.dist_field, self.cfg.max_steps
         ).trajectory

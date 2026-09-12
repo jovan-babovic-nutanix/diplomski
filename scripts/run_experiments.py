@@ -4,10 +4,12 @@
 Compares A*, GA and Q-Learning on the same mazes.
 
 Usage:
-    python scripts/run_experiments.py [--seeds 5] [--generations 80]
-        [--episodes 4000] [--width 21] [--height 21]
+    python scripts/run_experiments.py [--preset demo|thesis] [--seeds 5]
+        [--generations 80] [--episodes 4000] [--width 21] [--height 21]
         [--ga-pop 200] [--max-steps 300]
         [--methods A*,GA,Q-Learning] [--output outputs]
+
+Any explicit flag overrides the chosen preset's value for that setting.
 """
 from __future__ import annotations
 
@@ -19,14 +21,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import (  # noqa: E402
-    ExperimentConfig,
-    GAConfig,
-    MazeConfig,
-    QLearningConfig,
-    SimulationConfig,
-    seed_everything,
-)
+from config import get_preset, seed_everything  # noqa: E402
 from src.experiments.metrics import write_history_csv, write_summary_csv  # noqa: E402
 from src.experiments.plots import generate_all_plots  # noqa: E402
 from src.experiments.runner import DEFAULT_METHODS, run_experiment  # noqa: E402
@@ -34,29 +29,44 @@ from src.experiments.runner import DEFAULT_METHODS, run_experiment  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="A* vs GA vs Q-Learning maze study")
-    parser.add_argument("--seeds", type=int, default=5)
-    parser.add_argument("--generations", type=int, default=200)
-    parser.add_argument("--episodes", type=int, default=4000)
-    parser.add_argument("--width", type=int, default=21)
-    parser.add_argument("--height", type=int, default=21)
-    parser.add_argument("--ga-pop", type=int, default=300)
-    parser.add_argument("--max-steps", type=int, default=300)
+    parser.add_argument("--preset", choices=("demo", "thesis"), default="thesis")
+    parser.add_argument("--seeds", type=int, default=None)
+    parser.add_argument("--generations", type=int, default=None)
+    parser.add_argument("--episodes", type=int, default=None)
+    parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--height", type=int, default=None)
+    parser.add_argument("--ga-pop", type=int, default=None)
+    parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--methods", type=str, default=",".join(DEFAULT_METHODS))
-    parser.add_argument("--output", type=str, default="outputs")
+    parser.add_argument("--output", type=str, default=None)
     args = parser.parse_args()
 
     seed_everything(0)
     methods = tuple(m.strip() for m in args.methods.split(",") if m.strip())
 
-    cfg = ExperimentConfig(
-        n_seeds=args.seeds,
-        output_dir=args.output,
-        maze=MazeConfig(width=args.width, height=args.height),
-        simulation=SimulationConfig(max_steps=args.max_steps),
-        ga=GAConfig(population_size=args.ga_pop, generations=args.generations),
-        qlearning=QLearningConfig(episodes=args.episodes, max_steps=args.max_steps),
-    )
+    cfg = get_preset(args.preset)
+    if args.seeds is not None:
+        cfg.n_seeds = args.seeds
+    if args.output is not None:
+        cfg.output_dir = args.output
+    if args.width is not None:
+        cfg.maze.width = args.width
+    if args.height is not None:
+        cfg.maze.height = args.height
+    if args.max_steps is not None:
+        cfg.simulation.max_steps = args.max_steps
+        cfg.qlearning.max_steps = args.max_steps
+    if args.ga_pop is not None:
+        cfg.ga.population_size = args.ga_pop
+    if args.generations is not None:
+        cfg.ga.generations = args.generations
+    if args.episodes is not None:
+        cfg.qlearning.episodes = args.episodes
 
+    print(
+        f"preset={args.preset}  seeds={cfg.n_seeds}  maze={cfg.maze.width}x{cfg.maze.height}  "
+        f"GA={cfg.ga.population_size}x{cfg.ga.generations}  QL={cfg.qlearning.episodes}ep"
+    )
     print(f"Running study: {cfg.n_seeds} seeds, methods = {', '.join(methods)}")
     start = time.time()
     trials = run_experiment(cfg, methods=methods, progress=lambda m: print("  " + m, flush=True))

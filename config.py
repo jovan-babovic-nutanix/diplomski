@@ -89,3 +89,44 @@ class ExperimentConfig:
 def resolve_genome_length(ga: GAConfig, sim: SimulationConfig) -> int:
     """GA genome length defaults to the episode length when set to 0."""
     return ga.genome_length if ga.genome_length > 0 else sim.max_steps
+
+
+# Compute-budget note (thesis methodology):
+#   GA        : population_size * generations        = 300 * 200 = 60_000 episodes
+#   Q-Learning: episodes + episodes/episodes_per_step = 4000 + 80 =  4_080 episodes
+# ~15x gap at current defaults. This is deliberate for now (each method uses its
+# own conventional budget); an equal-episode-budget ablation is an open
+# methodology question, not something this preset machinery resolves.
+# StepStats.evaluations (see src/solver.py) is the common cost axis that makes
+# the gap visible in convergence_evaluations.png.
+
+
+def demo_config() -> ExperimentConfig:
+    """Interactive-demo preset: small maze, small budgets, smooth framerate."""
+    return ExperimentConfig(
+        n_seeds=3,
+        maze=MazeConfig(width=15, height=15),
+        simulation=SimulationConfig(max_steps=200),
+        ga=GAConfig(population_size=100, generations=80),
+        qlearning=QLearningConfig(episodes=2000, episodes_per_step=30, max_steps=200),
+    )
+
+
+def thesis_config() -> ExperimentConfig:
+    """Headless study preset used for the numbers reported in the thesis."""
+    return ExperimentConfig(
+        n_seeds=20,
+        maze=MazeConfig(width=21, height=21),
+        simulation=SimulationConfig(max_steps=300),
+        ga=GAConfig(population_size=300, generations=200),
+        qlearning=QLearningConfig(episodes=4000, episodes_per_step=50, max_steps=300),
+    )
+
+
+PRESETS = {"demo": demo_config, "thesis": thesis_config}
+
+
+def get_preset(name: str) -> ExperimentConfig:
+    if name not in PRESETS:
+        raise KeyError(f"Unknown preset {name!r}; options: {sorted(PRESETS)}")
+    return PRESETS[name]()

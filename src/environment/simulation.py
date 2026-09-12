@@ -62,6 +62,10 @@ def simulate(
         else:
             bumps += 1
         trajectory.append((r, c))
+        # NOTE: steps counts wall bumps too (a bumped move is a wasted step,
+        # not a move). This is intentional: for GA/Q-Learning a bump is real
+        # inefficiency. Compare with A*, whose path length is a pure edge
+        # count and can never include a bump (see planning/astar.py).
         steps += 1
 
         d = int(dist_field[r, c])

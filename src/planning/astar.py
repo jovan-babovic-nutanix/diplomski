@@ -82,6 +82,9 @@ class AStarSolver(Solver):
             self._path, self._nodes_expanded = astar(self.maze)
             self._done = True
         reached = self._path is not None
+        # Edge count of the optimal path - the denominator of optimality_ratio.
+        # See environment/simulation.py for why GA/Q-Learning "steps" are not
+        # exactly comparable in kind (they can include wasted wall-bump steps).
         path_len = (len(self._path) - 1) if self._path else None
         return StepStats(
             iteration=0,

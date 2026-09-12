@@ -28,13 +28,21 @@ FCell = Tuple[float, float]   # fractional (row, col)
 Cell = Tuple[int, int]
 
 # -- Flying Dots palette -----------------------------------------------------
+# Colors below were tuned against a WCAG contrast check (see
+# tests/test_visual_contrast.py): >=3:1 for graphical markers, >=4.5:1 for
+# normal-size text. Values differ from the original "Flying Dots" reference
+# where needed to clear those thresholds against the cyan maze floor / panel
+# chrome; the overall look is kept as close to the reference as contrast
+# allows.
 CYAN: Color = (126, 247, 247)          # maze background / open corridors
 WALL_BLUE: Color = (0, 0, 255)         # walls
 GOAL_RED: Color = (255, 0, 0)          # target square
-START_GREEN: Color = (0, 200, 90)      # start square
+START_GREEN: Color = (0, 120, 60)      # start square
 DOT_BLACK: Color = (0, 0, 0)           # population dots
-LEADER_RING: Color = (245, 197, 24)    # ring around best-of-generation
-PATH_COLOR: Color = (255, 140, 0)      # best path found so far
+LEADER_RING: Color = (170, 112, 0)     # ring around best-of-generation
+PATH_COLOR: Color = (196, 78, 0)       # best path found so far
+MARKER_EDGE: Color = (255, 255, 255)   # keeps start/goal legible under the
+                                        # dense black swarm
 
 # -- window chrome (kept light so the cyan mazes read cleanly) ---------------
 WINDOW_BG: Color = (233, 237, 242)
@@ -42,14 +50,18 @@ PANEL_BG: Color = (247, 249, 252)
 TITLE_BG: Color = (255, 255, 255)
 TITLE_BG_SOLVED: Color = (214, 245, 224)
 TITLE_TEXT: Color = (28, 32, 44)
-TITLE_DIM: Color = (120, 128, 142)
+TITLE_DIM: Color = (88, 95, 110)
 CHIP_BG: Color = (223, 228, 235)
-GOOD: Color = (0, 170, 90)
+GOOD: Color = (0, 125, 66)
+BUTTON_BLUE: Color = (21, 101, 160)
+BUTTON_DISABLED: Color = (203, 208, 215)
+BUTTON_DISABLED_TEXT: Color = (99, 105, 118)
+BORDER_OK: Color = (23, 140, 75)
 
 METHOD_ACCENT = {
-    "GA": (52, 152, 219),
-    "Q-Learning": (230, 126, 34),
-    "A*": (46, 204, 113),
+    "GA": (31, 110, 170),
+    "Q-Learning": (183, 88, 10),
+    "A*": (23, 140, 75),
 }
 
 PAD = 14
@@ -149,13 +161,15 @@ class Renderer:
             pygame.draw.rect(self.screen, METHOD_ACCENT["Q-Learning"], pygame.Rect(bx, by, fill, 10), border_radius=5)
         self.screen.blit(self.small.render("playback", True, TITLE_DIM), (bx, by - 16))
 
-    def draw_footer(self, text: str) -> None:
+    def draw_footer(self, text: str, next_enabled: bool = True) -> None:
         surf = self.small.render(text, True, TITLE_DIM)
         self.screen.blit(surf, (PAD + 2, self.height - FOOTER_H + 6))
 
         button = self.next_button_rect()
-        pygame.draw.rect(self.screen, (52, 152, 219), button, border_radius=6)
-        label = self.small.render("NEXT ROUND", True, (255, 255, 255))
+        fill = BUTTON_BLUE if next_enabled else BUTTON_DISABLED
+        text_color = (255, 255, 255) if next_enabled else BUTTON_DISABLED_TEXT
+        pygame.draw.rect(self.screen, fill, button, border_radius=6)
+        label = self.small.render("NEXT ROUND", True, text_color)
         self.screen.blit(label, label.get_rect(center=button.center))
 
     def draw_summary(
@@ -166,7 +180,7 @@ class Renderer:
         pygame.draw.rect(self.screen, PANEL_BG, rect, border_radius=8)
         pygame.draw.rect(
             self.screen,
-            (46, 204, 113) if finished else (180, 188, 200),
+            BORDER_OK if finished else (180, 188, 200),
             rect,
             width=2,
             border_radius=8,
@@ -177,7 +191,7 @@ class Renderer:
         subtitle = self.small.render(
             "all methods complete" if finished else "waiting for completion",
             True,
-            (0, 150, 80) if finished else TITLE_DIM,
+            GOOD if finished else TITLE_DIM,
         )
         self.screen.blit(subtitle, (rect.x + 14, rect.y + 36))
 
@@ -199,7 +213,7 @@ class Renderer:
             status = "SOLVED" if solved else (
                 "FAILED" if data.get("completed") else "running..."
             )
-            status_color = (0, 155, 80) if solved else TITLE_DIM
+            status_color = GOOD if solved else TITLE_DIM
             self.screen.blit(
                 self.small.render(status, True, status_color),
                 (rect.x + 28, y + 23),
@@ -242,7 +256,7 @@ class Renderer:
         solved: bool,
     ) -> None:
         panel = self.panel_rect(index)
-        accent = METHOD_ACCENT.get(method, (52, 152, 219))
+        accent = METHOD_ACCENT.get(method, BUTTON_BLUE)
 
         pygame.draw.rect(self.screen, PANEL_BG, panel, border_radius=8)
         pygame.draw.rect(self.screen, accent, panel, width=2, border_radius=8)
@@ -252,8 +266,11 @@ class Renderer:
         self._draw_maze(ox, oy)
         if best_path:
             self._draw_path(ox, oy, best_path)
-        self._draw_markers(ox, oy)
         self._draw_swarm(ox, oy, agents)
+        # Markers are drawn *after* the swarm: hundreds of agents start every
+        # round on the start cell, and their stacked semi-transparent dots
+        # would otherwise bury the marker underneath.
+        self._draw_markers(ox, oy)
         if leader is not None:
             self._draw_leader(ox, oy, leader)
 
@@ -288,13 +305,17 @@ class Renderer:
                     pygame.draw.rect(self.screen, WALL_BLUE, rect)
 
     def _draw_markers(self, ox: int, oy: int) -> None:
+        edge = max(1, self.cell // 8)
+
         sr, sc = self.maze.start
         srect = pygame.Rect(ox + sc * self.cell, oy + sr * self.cell, self.cell, self.cell)
         pygame.draw.rect(self.screen, START_GREEN, srect)
+        pygame.draw.rect(self.screen, MARKER_EDGE, srect, width=edge)
 
         gr, gc = self.maze.goal
         grect = pygame.Rect(ox + gc * self.cell, oy + gr * self.cell, self.cell, self.cell)
         pygame.draw.rect(self.screen, GOAL_RED, grect)
+        pygame.draw.rect(self.screen, MARKER_EDGE, grect, width=edge)
 
     # -- overlays -----------------------------------------------------------
     def _overlay(self) -> pygame.Surface:

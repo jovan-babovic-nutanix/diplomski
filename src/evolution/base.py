@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from ..environment.simulation import Controller, SimulationResult
+from ..maze.maze import Cell
 
 # An evaluation function maps a controller to (fitness, simulation result).
 EvalFn = Callable[[Controller], Tuple[float, SimulationResult]]
@@ -65,3 +66,7 @@ class Evolver(ABC):
     @abstractmethod
     def stats(self) -> GenerationStats:
         """Summary statistics for the most recently evaluated generation."""
+
+    def population_trajectories(self) -> List[List[Cell]]:
+        """Trajectories of the most recently evaluated population (for drawing)."""
+        return [ind.result.trajectory for ind in self.population if ind.result is not None]

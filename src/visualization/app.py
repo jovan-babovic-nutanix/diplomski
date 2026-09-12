@@ -11,6 +11,10 @@ One "round" = one generation (GA), one training batch (Q-Learning) or one
 planning step (A*). After the shared animation plays out, all three advance to
 their next round together.
 
+This module owns only pygame concerns (window, input, frame timing,
+rendering); the actual round-advancing/completion/metrics state machine lives
+in ``session.ComparisonSession`` so it can be tested without a display.
+
 Controls:
     SPACE  pause / resume
     + / -  faster / slower animation
@@ -22,10 +26,7 @@ Controls:
 """
 from __future__ import annotations
 
-import math
-import time
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pygame
 
@@ -36,28 +37,12 @@ from config import (
     QLearningConfig,
     SimulationConfig,
 )
-from ..experiments.runner import build_ga, make_eval
-from ..maze.distance import bfs_distance_field, optimal_path_length
-from ..maze.generator import generate_maze
 from ..maze.maze import Cell
-from ..planning.astar import AStarSolver
-from ..rl.qlearning import QLearningSolver
+from .session import METHODS, ComparisonSession, PanelState
 
-METHODS = ["GA", "Q-Learning", "A*"]
-POPULATION_METHODS = {"GA"}
 MAX_VISIBLE_STEP = 8.0
 
 FCell = Tuple[float, float]
-
-
-@dataclass
-class PanelState:
-    """Everything the renderer needs to draw one method's current round."""
-    trajectories: List[List[Cell]] = field(default_factory=list)
-    leader_traj: List[Cell] = field(default_factory=list)
-    best_path: Optional[List[Cell]] = None
-    info: Dict[str, object] = field(default_factory=dict)
-    max_len: int = 1
 
 
 class MazeApp:
@@ -71,189 +56,26 @@ class MazeApp:
         fps: int = 60,
     ):
         pygame.init()
-        self.maze_cfg = maze_cfg or MazeConfig()
-        self.sim_cfg = sim_cfg or SimulationConfig()
-        self.fit_cfg = fit_cfg or FitnessConfig()
-        self.ga_cfg = ga_cfg or GAConfig()
-        self.ql_cfg = ql_cfg or QLearningConfig(
-            episodes_per_step=30, max_steps=self.sim_cfg.max_steps
+        maze_cfg = maze_cfg or MazeConfig()
+        sim_cfg = sim_cfg or SimulationConfig()
+        fit_cfg = fit_cfg or FitnessConfig()
+        ga_cfg = ga_cfg or GAConfig()
+        ql_cfg = ql_cfg or QLearningConfig(
+            episodes_per_step=30, max_steps=sim_cfg.max_steps
         )
         self.fps = fps
 
-        self.seed = self.maze_cfg.seed
-        self._build_world(self.seed)
+        self.session = ComparisonSession(maze_cfg, sim_cfg, fit_cfg, ga_cfg, ql_cfg)
 
         from .renderer import Renderer
 
-        self.renderer = Renderer(self.maze, cols=3, rows=1, target_cell_area=300)
+        self.renderer = Renderer(self.session.maze, cols=3, rows=1, target_cell_area=300)
 
         self.paused = False
         self.speed = 0.4
         self.show_render = True
-        self.ga_done = False
-        self.qlearning_done = False
-        self.astar_done = False
-        self.finished = False
-        self._reset_metrics()
-        self.clock = pygame.time.Clock()
-
-        self.states: Dict[str, PanelState] = {}
-        self._start_all_rounds()
-
-    # -- world setup --------------------------------------------------------
-    def _build_world(self, seed: int) -> None:
-        self.maze = generate_maze(self.maze_cfg.width, self.maze_cfg.height, seed=seed)
-        self.dist_field = bfs_distance_field(self.maze, self.maze.goal)
-        self.optimal = optimal_path_length(self.maze)
-        self.eval_fn = make_eval(self.maze, self.sim_cfg, self.fit_cfg, self.dist_field)
-
-        self.evolvers = {"GA": build_ga(self.ga_cfg, self.sim_cfg)}
-        self.solvers = {
-            "Q-Learning": QLearningSolver(self.ql_cfg, self.maze, self.dist_field, self.fit_cfg),
-            "A*": AStarSolver(self.maze),
-        }
-
-    # -- rounds -------------------------------------------------------------
-    def _start_all_rounds(self) -> None:
-        for method in METHODS:
-            if method == "GA" and self.ga_done:
-                continue
-            if method == "Q-Learning" and self.qlearning_done:
-                continue
-            if method == "A*" and self.astar_done:
-                continue
-            self.states[method] = self._start_round(method)
-            if method == "GA":
-                info = self.states[method].info
-                generation = int(info.get("iteration", 0))
-                self.ga_done = bool(info.get("solved")) or (
-                    generation + 1 >= self.ga_cfg.generations
-                )
-                self._record_completion("GA", self.states[method], self.ga_done)
-            elif method == "Q-Learning":
-                iteration = int(self.states[method].info.get("iteration", 0))
-                # iteration is 0-based (matches GA), so round k is the
-                # (k+1)-th batch.
-                self.qlearning_done = bool(
-                    self.states[method].info.get("solved")
-                ) or iteration + 1 >= self._max_qlearning_rounds()
-                self._record_completion(
-                    "Q-Learning", self.states[method], self.qlearning_done
-                )
-            elif method == "A*":
-                # A* is one-shot: it is done after its single planning run
-                # whether or not a path exists. Deriving this from "solved"
-                # would hang the app forever on an unreachable goal.
-                self.astar_done = self.solvers["A*"].is_converged()
-                self._record_completion("A*", self.states[method], self.astar_done)
-        self.finished = self.ga_done and self.qlearning_done and self.astar_done
-        self.global_max = max((s.max_len for s in self.states.values()), default=1)
         self.anim_pos = 0.0
-
-    def _reset_metrics(self) -> None:
-        now = time.perf_counter()
-        self.method_started = {method: now for method in METHODS}
-        self.metrics: Dict[str, Dict[str, object]] = {
-            method: {"completed": False} for method in METHODS
-        }
-
-    def _record_completion(
-        self, method: str, state: PanelState, completed: bool
-    ) -> None:
-        if not completed or self.metrics[method].get("completed"):
-            return
-        info = state.info
-        solved = bool(info.get("solved"))
-        path_length = info.get("best_steps")
-        optimality = "-"
-        if solved and path_length is not None and self.optimal > 0:
-            optimality = f"{float(path_length) / self.optimal:.2f}x"
-        elapsed = time.perf_counter() - self.method_started[method]
-        self.metrics[method] = {
-            "completed": True,
-            "solved": solved,
-            "iterations": info.get("iteration", "-"),
-            "evaluations": info.get("evaluations", "-"),
-            "path_length": path_length if path_length is not None else "-",
-            "optimality": optimality,
-            "time_s": f"{elapsed:.3f}s",
-        }
-
-    def _max_qlearning_rounds(self) -> int:
-        """Maximum UI training rounds allowed by the episode budget."""
-        return max(
-            1,
-            math.ceil(self.ql_cfg.episodes / self.ql_cfg.episodes_per_step),
-        )
-
-    def _advance_all_rounds(self) -> None:
-        for method in POPULATION_METHODS:
-            if method == "GA" and self.ga_done:
-                continue
-            self.evolvers[method].reproduce()
-        self._start_all_rounds()
-
-    def _start_round(self, method: str) -> PanelState:
-        if method in POPULATION_METHODS:
-            return self._population_round(method)
-        return self._solver_round(method)
-
-    def _population_round(self, method: str) -> PanelState:
-        ev = self.evolvers[method]
-        ev.evaluate(self.eval_fn)
-        stats = ev.stats()
-        trajectories = [ind.result.trajectory for ind in ev.population]
-        gen_best = max(ev.population, key=lambda i: i.fitness)
-        best = ev.best()
-        state = PanelState(
-            trajectories=trajectories,
-            leader_traj=gen_best.result.trajectory,
-            best_path=best.result.trajectory if best.result else None,
-            info={
-                "iteration": stats.generation,
-                "solved": stats.best_reached,
-                "best_steps": stats.best_steps if stats.best_reached else None,
-                "evaluations": (stats.generation + 1) * self.ga_cfg.population_size,
-                "species": stats.num_species,
-            },
-        )
-        state.max_len = max((len(t) for t in trajectories), default=1)
-        return state
-
-    def _solver_round(self, method: str) -> PanelState:
-        solver = self.solvers[method]
-        st = solver.step()
-        path = solver.best_path() or [self.maze.start]
-        state = PanelState(
-            trajectories=[path],
-            leader_traj=path,
-            best_path=path if st.reached else None,
-            info={
-                "iteration": st.iteration,
-                "solved": st.reached,
-                "best_steps": st.best_path_length,
-                "evaluations": st.evaluations,
-                "extra": dict(st.extra),
-            },
-        )
-        state.max_len = max(len(path), 1)
-        return state
-
-    # -- animation helpers --------------------------------------------------
-    @staticmethod
-    def _interp(traj: List[Cell], pos: float) -> FCell:
-        if not traj:
-            return (0.0, 0.0)
-        last = len(traj) - 1
-        i = min(int(pos), last)
-        frac = pos - i if i < last else 0.0
-        r0, c0 = traj[i]
-        r1, c1 = traj[min(i + 1, last)]
-        return (r0 + (r1 - r0) * frac, c0 + (c1 - c0) * frac)
-
-    def _positions_at(self, state: PanelState, pos: float) -> List[FCell]:
-        capped = min(pos, state.max_len)
-        return [self._interp(t, capped) for t in state.trajectories]
+        self.clock = pygame.time.Clock()
 
     # -- main loop ----------------------------------------------------------
     def run(self) -> None:
@@ -286,54 +108,67 @@ class MazeApp:
         elif key == pygame.K_v:
             self.show_render = not self.show_render
         elif key == pygame.K_r:
-            self.seed += 1
-            self._build_world(self.seed)
-            self.renderer.set_maze(self.maze)
-            self.ga_done = False
-            self.qlearning_done = False
-            self.astar_done = False
-            self.finished = False
-            self._reset_metrics()
-            self._start_all_rounds()
+            self.session.reset(self.session.seed + 1)
+            self.renderer.set_maze(self.session.maze)
+            self.anim_pos = 0.0
         return True
 
     def _advance_one_round(self) -> None:
         """Skip the current playback and advance all active methods once."""
-        if self.finished:
+        if self.session.finished:
             return
-        self._advance_all_rounds()
+        self.session.advance_one_round()
+        self.anim_pos = 0.0
 
     def _update(self) -> None:
-        if self.paused or self.finished:
+        if self.paused or self.session.finished:
             return
         if not self.show_render:
-            self._advance_all_rounds()
-            self.anim_pos = float(self.global_max)
+            self.session.advance_all_rounds()
+            self.anim_pos = float(self.session.global_max)
             return
         # At very high speeds, jumping several hundred cells per frame makes
         # the dots appear to disappear. Keep the displayed movement visible;
         # the v key remains available for true fast-forward without drawing.
         self.anim_pos += min(self.speed, MAX_VISIBLE_STEP)
-        if self.anim_pos >= self.global_max:
-            self._advance_all_rounds()
+        if self.anim_pos >= self.session.global_max:
+            self.session.advance_all_rounds()
+            self.anim_pos = 0.0
+
+    # -- animation helpers --------------------------------------------------
+    @staticmethod
+    def _interp(traj: List[Cell], pos: float) -> FCell:
+        if not traj:
+            return (0.0, 0.0)
+        last = len(traj) - 1
+        i = min(int(pos), last)
+        frac = pos - i if i < last else 0.0
+        r0, c0 = traj[i]
+        r1, c1 = traj[min(i + 1, last)]
+        return (r0 + (r1 - r0) * frac, c0 + (c1 - c0) * frac)
+
+    def _positions_at(self, state: PanelState, pos: float) -> List[FCell]:
+        capped = min(pos, state.max_len)
+        return [self._interp(t, capped) for t in state.trajectories]
 
     # -- drawing ------------------------------------------------------------
     def _draw(self) -> None:
+        session = self.session
         self.renderer.begin_frame()
-        progress = self.anim_pos / self.global_max if self.global_max else 1.0
+        progress = self.anim_pos / session.global_max if session.global_max else 1.0
         self.renderer.draw_header(
             "Maze solving: 3 methods, one maze",
             [
-                f"maze {self.maze.width}x{self.maze.height}",
-                f"seed {self.seed}",
-                f"optimal {self.optimal}",
+                f"maze {session.maze.width}x{session.maze.height}",
+                f"seed {session.seed}",
+                f"optimal {session.optimal}",
                 (
                     f"speed {self.speed:.0f}x"
                     + (" (visual cap)" if self.show_render and self.speed > MAX_VISIBLE_STEP else "")
                 ),
                 (
                     "FINISHED"
-                    if self.finished
+                    if session.finished
                     else (
                         "PAUSED"
                         if self.paused
@@ -344,7 +179,7 @@ class MazeApp:
             progress,
         )
         for idx, method in enumerate(METHODS):
-            state = self.states[method]
+            state = session.states[method]
             positions = self._positions_at(state, self.anim_pos)
             leader = self._interp(state.leader_traj, min(self.anim_pos, len(state.leader_traj)))
             self.renderer.draw_panel(
@@ -356,10 +191,10 @@ class MazeApp:
                 self._panel_stats(method, state),
                 bool(state.info.get("solved")),
             )
-        self.renderer.draw_summary(self.metrics, self.finished)
+        self.renderer.draw_summary(session.metrics, session.finished)
         self.renderer.draw_footer(
             "SPACE pause   N / NEXT ROUND   +/- speed   r new maze   v fast-forward   ESC quit",
-            next_enabled=not self.finished,
+            next_enabled=not session.finished,
         )
         self.renderer.end_frame()
 
@@ -367,10 +202,10 @@ class MazeApp:
         info = state.info
         steps = info.get("best_steps")
         stats: List[Tuple[str, str]] = [
-            ("gen" if method in POPULATION_METHODS else "iter", str(info.get("iteration", 0))),
+            ("gen" if method == "GA" else "iter", str(info.get("iteration", 0))),
             ("steps", str(steps) if steps is not None else "-"),
         ]
-        if method == "GA" and self.ga_done:
+        if method == "GA" and self.session.ga_done:
             stats.append(("status", "done"))
         if method == "Q-Learning":
             extra = info.get("extra", {}) or {}

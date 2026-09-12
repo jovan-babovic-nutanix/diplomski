@@ -59,6 +59,16 @@ class Solver(ABC):
         """If True, the runner may stop early (used by A*)."""
         return False
 
+    def population_trajectories(self) -> Optional[List[List[Cell]]]:
+        """Trajectories of the whole current population, for population-based
+        methods only (e.g. GA's swarm). ``None`` for single-policy methods."""
+        return None
+
+    def leader_trajectory(self) -> Optional[List[Cell]]:
+        """Trajectory of the current round's best individual, for
+        population-based methods only. ``None`` for single-policy methods."""
+        return None
+
 
 class EvolverSolver(Solver):
     """Adapts the GA ``Evolver`` to the ``Solver`` interface."""
@@ -71,12 +81,20 @@ class EvolverSolver(Solver):
         self._evaluations = 0
         self._solved = False
         self._best_path_len: Optional[int] = None
+        self._last_trajectories: List[List[Cell]] = []
+        self._last_leader: Optional[List[Cell]] = None
 
     def step(self) -> StepStats:
         ev = self.evolver
         ev.evaluate(self.eval_fn)
         gen_stats = ev.stats()
         self._evaluations += self.population_size
+
+        # Snapshot the population's trajectories/leader *before* reproduce()
+        # replaces ev.population with the next generation.
+        self._last_trajectories = ev.population_trajectories()
+        gen_best = max(ev.population, key=lambda i: i.fitness)
+        self._last_leader = gen_best.result.trajectory if gen_best.result else None
 
         best = ev.best()
         if best.result is not None and best.result.reached:
@@ -111,3 +129,9 @@ class EvolverSolver(Solver):
     def is_converged(self) -> bool:
         """Stop early once any evaluated GA individual reaches the goal."""
         return self._solved
+
+    def population_trajectories(self) -> Optional[List[List[Cell]]]:
+        return self._last_trajectories
+
+    def leader_trajectory(self) -> Optional[List[Cell]]:
+        return self._last_leader

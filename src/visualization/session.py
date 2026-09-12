@@ -158,6 +158,7 @@ class ComparisonSession:
             "path_length": path_length if path_length is not None else "-",
             "optimality": optimality,
             "time_s": f"{elapsed:.3f}s",
+            "time_s_val": elapsed,  # raw seconds, for UI bar-chart scaling
         }
 
     def _max_qlearning_rounds(self) -> int:

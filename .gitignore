@@ -12,6 +12,9 @@ venv/
 outputs/
 outputs_*/
 
+# Scratch workspace (design mockups, preview renders) - not part of the app
+scratch/
+
 # OS / editor
 .DS_Store
 .idea/

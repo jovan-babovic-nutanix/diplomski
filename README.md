@@ -87,9 +87,16 @@ Controls:
 | `v`       | toggle animation rendering (off = fast-forward) |
 | `ESC`     | quit                                            |
 
-For GA, faded black dots are the population, the gold marker is the current
-best agent, and the gold line is the best path so far. For Q-Learning and A* a
-single gold agent glides along the best/optimal path.
+For GA, translucent dots are the population, the ringed marker is the current
+best-of-generation agent, and the glowing line is the best path so far. For
+Q-Learning and A* a single agent glides along the best/optimal path. The `P`
+key (or the "Show population" checkbox) hides GA's swarm for a cleaner shot.
+
+The UI ("Race Control") uses three bundled open-source fonts under
+`assets/fonts/` (Chakra Petch, IBM Plex Sans, IBM Plex Mono - all SIL Open
+Font License, license text included alongside each). If that directory is
+ever missing, `src/visualization/renderer.py` falls back to system fonts
+automatically - nothing breaks, it just looks slightly different.
 
 ## Reproduce the thesis comparison
 

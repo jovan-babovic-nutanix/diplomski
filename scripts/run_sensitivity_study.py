@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""GA hyperparameter sensitivity study, on a fixed "hard" maze size.
+"""Hyperparameter sensitivity study, for GA or Q-Learning, on a fixed "hard" maze size.
 
 Answers the other flagged CLAUDE.md item: "Sensitivity analysis on key
-hyperparameters (... GA mutation_rate)". Holds maze size at the thesis
-default (21x21) and sweeps one GA hyperparameter at a time (others held at
-the thesis default) to show how population size, mutation rate, and the
-generation budget each affect success rate on a maze that's already hard for
-the open-loop encoding.
+hyperparameters (Q-Learning alpha/gamma, GA mutation_rate)". Holds maze size
+at the thesis default (21x21) and sweeps one hyperparameter at a time
+(others held at the thesis default) to show how each affects success rate on
+a maze that's already hard for the method in question. A* has no tunable
+hyperparameters in the current implementation (the heuristic is fixed to
+Manhattan distance), so it has no sweep here.
 
 Usage:
-    python scripts/run_sensitivity_study.py [--seeds 6] [--size 21]
-        [--output outputs/sensitivity]
+    python scripts/run_sensitivity_study.py [--method GA|Q-Learning] [--seeds 6]
+        [--size 21] [--output outputs/sensitivity]
 
 Writes <output>/sensitivity.csv with columns:
     sweep, value, seed, optimal_path_length, solved, generations_to_solve,
@@ -23,7 +24,6 @@ import csv
 import os
 import sys
 import time
-from dataclasses import replace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -32,29 +32,45 @@ from src.maze.distance import bfs_distance_field, optimal_path_length  # noqa: E
 from src.maze.generator import generate_maze  # noqa: E402
 from src.experiments.runner import build_solver, run_solver  # noqa: E402
 
-# One-at-a-time sweeps; every other GA hyperparameter stays at the thesis
-# default (population_size=300, generations=200, mutation_rate=0.03).
-SWEEPS = {
+# One-at-a-time sweeps; every other hyperparameter stays at the thesis default.
+GA_SWEEPS = {
     "population_size": [100, 200, 300, 450, 600],
     "mutation_rate": [0.01, 0.03, 0.06, 0.10, 0.20],
     "generations": [50, 100, 200, 300, 400],
 }
+# QLearningConfig thesis defaults: alpha=0.2, gamma=0.95, episodes=4000.
+QL_SWEEPS = {
+    "alpha": [0.05, 0.1, 0.2, 0.4, 0.8],
+    "gamma": [0.7, 0.8, 0.9, 0.95, 0.99],
+    "episodes": [1000, 2000, 4000, 6000, 8000],
+}
+SWEEPS_BY_METHOD = {"GA": GA_SWEEPS, "Q-Learning": QL_SWEEPS}
+DEFAULT_OUTPUT = {"GA": "outputs/sensitivity", "Q-Learning": "outputs/sensitivity_ql"}
+
+
+def _final_progress(method: str, solver, optimal: int) -> int:
+    if method == "GA":
+        best = solver.evolver.best()
+        return best.result.progress if best.result else 0
+    best_result = getattr(solver, "_best_result", None)
+    return best_result.progress if best_result is not None else 0
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="GA hyperparameter sensitivity study")
+    parser = argparse.ArgumentParser(description="Hyperparameter sensitivity study")
+    parser.add_argument("--method", type=str, default="GA", choices=["GA", "Q-Learning"])
     parser.add_argument("--seeds", type=int, default=6)
     parser.add_argument("--base-seed", type=int, default=1000)
     parser.add_argument("--size", type=int, default=21)
-    parser.add_argument("--output", type=str, default="outputs/sensitivity")
+    parser.add_argument("--output", type=str, default=None)
     args = parser.parse_args()
 
-    base_cfg = thesis_config()
-    base_cfg.maze.width = args.size
-    base_cfg.maze.height = args.size
+    method = args.method
+    output = args.output or DEFAULT_OUTPUT[method]
+    sweeps = SWEEPS_BY_METHOD[method]
 
-    os.makedirs(args.output, exist_ok=True)
-    out_path = os.path.join(args.output, "sensitivity.csv")
+    os.makedirs(output, exist_ok=True)
+    out_path = os.path.join(output, "sensitivity.csv")
 
     # Pre-generate the mazes once so every sweep/value combination for a given
     # seed is evaluated on exactly the same maze (fair comparison).
@@ -68,7 +84,7 @@ def main() -> None:
 
     rows = []
     start_all = time.time()
-    for sweep_name, values in SWEEPS.items():
+    for sweep_name, values in sweeps.items():
         for value in values:
             for i in range(args.seeds):
                 seed = args.base_seed + i
@@ -77,18 +93,15 @@ def main() -> None:
                 cfg = thesis_config()
                 cfg.maze.width = args.size
                 cfg.maze.height = args.size
-                if sweep_name == "generations":
-                    cfg.ga.generations = value
-                else:
-                    setattr(cfg.ga, sweep_name, value)
+                target_cfg = cfg.ga if method == "GA" else cfg.qlearning
+                setattr(target_cfg, sweep_name, value)
 
                 t0 = time.time()
-                solver, max_iters = build_solver("GA", maze, dist_field, cfg, seed)
+                solver, max_iters = build_solver(method, maze, dist_field, cfg, seed)
                 history, iters, evals, wall = run_solver(solver, max_iters)
 
-                best = solver.evolver.best()
-                final_progress = best.result.progress if best.result else 0
                 solved = any(st.reached for st in history)
+                final_progress = _final_progress(method, solver, optimal)
                 frac = (final_progress / optimal) if optimal > 0 else float("nan")
 
                 row = dict(
@@ -105,9 +118,9 @@ def main() -> None:
                 )
                 rows.append(row)
                 print(
-                    f"[{time.time()-start_all:7.1f}s] sweep={sweep_name:15s} value={value!s:6s} "
+                    f"[{time.time()-start_all:7.1f}s] method={method:10s} sweep={sweep_name:15s} value={value!s:6s} "
                     f"seed={seed} solved={solved!s:5} progress={frac*100:5.1f}% "
-                    f"gen_to_solve={iters} ({time.time()-t0:.2f}s)",
+                    f"iters_to_solve={iters} ({time.time()-t0:.2f}s)",
                     flush=True,
                 )
 
